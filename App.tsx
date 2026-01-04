@@ -28,15 +28,23 @@ const App: React.FC = () => {
   const setupSensors = useCallback(async () => {
     setIsLoading(true);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      /**
+       * 优化移动端摄像头约束：
+       * 1. 显式请求 9:16 宽高比，减少浏览器自动裁剪。
+       * 2. 使用 720x1280 (HD) 作为理想值，这在大多数手机前置摄像头上比 1080p 兼容性更好，
+       *    且不容易触发导致画面“变近”的数字缩放。
+       */
+      const constraints: MediaStreamConstraints = {
         video: {
           facingMode: 'user',
-          width: { ideal: 1080 },
-          height: { ideal: 1920 },
+          aspectRatio: { ideal: 9 / 16 },
+          width: { ideal: 720 },
+          height: { ideal: 1280 }
         },
         audio: true
-      });
-      
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
 
       if (videoRef.current) {
@@ -57,7 +65,8 @@ const App: React.FC = () => {
       analyserRef.current = analyser;
 
     } catch (err) {
-      setError("无法访问摄像头或麦克风");
+      console.error("Sensor setup failed:", err);
+      setError("无法访问摄像头或麦克风，请检查权限设置");
       setIsLoading(false);
     }
   }, []);
@@ -103,7 +112,6 @@ const App: React.FC = () => {
   }, []);
 
   // --- SCREENSHOT LOGIC ---
-
   const takeScreenshot = async () => {
     if (!videoRef.current) return;
     
@@ -120,7 +128,7 @@ const App: React.FC = () => {
     ctx.drawImage(videoRef.current, -canvas.width, 0, canvas.width, canvas.height);
     ctx.restore();
 
-    // Draw HUD Data Background (Smaller in screenshot too)
+    // Draw HUD Data Background
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.beginPath();
     ctx.roundRect(30, canvas.height - 300, 320, 260, 20);
@@ -136,7 +144,7 @@ const App: React.FC = () => {
     ctx.fillText(`DST: ${pose.distance}cm`, 60, canvas.height - 80);
 
     const link = document.createElement('a');
-    link.download = `pose-${Date.now()}.png`;
+    link.download = `head-pose-${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   };
@@ -148,8 +156,8 @@ const App: React.FC = () => {
         await setupSensors();
         startMonitoring();
       } catch (err) {
-        console.error(err);
-        setError("初始化失败");
+        console.error("Init failed:", err);
+        setError("初始化失败，请刷新页面");
       }
     };
     init();
@@ -158,9 +166,9 @@ const App: React.FC = () => {
 
   const DataItem = ({ label, value, color, unit = "°" }: { label: string, value: number, color: string, unit?: string }) => (
     <div className="flex items-center gap-1.5 leading-none">
-      <span className="text-[8px] font-bold text-white/50 uppercase tracking-tighter w-8">{label}</span>
-      <span className={`text-[13px] font-mono font-bold ${color}`}>
-        {value}<span className="text-[8px] ml-0.5 opacity-30 font-sans font-normal">{unit}</span>
+      <span className="text-[9px] font-bold text-white/50 uppercase tracking-tighter w-8">{label}</span>
+      <span className={`text-[14px] font-mono font-bold ${color}`}>
+        {value}<span className="text-[9px] ml-0.5 opacity-30 font-sans font-normal">{unit}</span>
       </span>
     </div>
   );
@@ -169,6 +177,10 @@ const App: React.FC = () => {
     <div className="fixed inset-0 bg-neutral-950 flex items-center justify-center overflow-hidden select-none">
       <div className="relative h-full aspect-[9/16] max-h-screen w-auto bg-black shadow-2xl flex flex-col overflow-hidden">
         
+        {/* 
+          video 使用 object-cover 填满 9:16 容器。
+          如果获取到的流本身就是 9:16，则不会产生额外的放大感。
+        */}
         <video
           ref={videoRef}
           autoPlay
@@ -179,20 +191,20 @@ const App: React.FC = () => {
         />
 
         {/* Action Controls (Top Right) */}
-        <div className="absolute top-4 right-4 pointer-events-none">
+        <div className="absolute top-4 right-4 pointer-events-none z-10">
           <button 
             onClick={takeScreenshot}
-            className="pointer-events-auto w-10 h-10 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white hover:bg-white/10 active:scale-90 transition-all shadow-lg"
+            className="pointer-events-auto w-12 h-12 rounded-2xl bg-black/30 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white active:scale-90 transition-all shadow-xl"
             title="Take Screenshot"
           >
-            <i className="fa-solid fa-camera text-sm"></i>
+            <i className="fa-solid fa-camera text-lg"></i>
           </button>
         </div>
 
-        {/* HUD Overlay - Bottom-Left Positioned & Compact */}
+        {/* HUD Overlay - Bottom-Left Positioned & Ultra Compact */}
         {!isLoading && !error && (
-          <div className="absolute left-3 bottom-3 pointer-events-none flex flex-col gap-2">
-            <div className="flex flex-col gap-1.5 backdrop-blur-xl bg-black/40 p-2.5 rounded-xl border border-white/10 shadow-2xl">
+          <div className="absolute left-4 bottom-6 pointer-events-none flex flex-col gap-3 z-10">
+            <div className="flex flex-col gap-2 backdrop-blur-2xl bg-black/40 p-3.5 rounded-2xl border border-white/10 shadow-2xl">
               <DataItem label="Yaw" value={Math.abs(pose.yaw)} color="text-emerald-400" />
               <DataItem label="Pit" value={Math.abs(pose.pitch)} color="text-sky-400" />
               <DataItem label="Rol" value={Math.abs(pose.roll)} color="text-violet-400" />
@@ -201,36 +213,36 @@ const App: React.FC = () => {
               <DataItem label="Vol" value={pose.volume || 0} color="text-pink-400" unit="dB" />
             </div>
 
-            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-black/40 backdrop-blur-md rounded-full border border-white/5 w-fit">
-              <div className={`w-1 h-1 rounded-full animate-pulse ${pose.volume && pose.volume > 45 ? 'bg-pink-500' : 'bg-emerald-500'}`}></div>
-              <span className="text-[7px] font-black text-white/30 uppercase tracking-widest">Live</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-black/40 backdrop-blur-md rounded-full border border-white/5 w-fit">
+              <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${pose.volume && pose.volume > 45 ? 'bg-pink-500' : 'bg-emerald-500'}`}></div>
+              <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Live Tracking</span>
             </div>
           </div>
         )}
 
         {/* Loader/Error Displays */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
           {isLoading && (
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-4 h-4 border-2 border-white/10 border-t-white/80 rounded-full animate-spin"></div>
-              <span className="text-white/30 text-[8px] font-black uppercase tracking-[0.4em]">Booting</span>
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-6 h-6 border-2 border-white/10 border-t-white rounded-full animate-spin"></div>
+              <span className="text-white/40 text-[9px] font-black uppercase tracking-[0.4em]">Optimizing Feed</span>
             </div>
           )}
           {error && (
-            <div className="bg-black/80 backdrop-blur-2xl px-5 py-4 rounded-2xl border border-red-500/20 mx-6 text-center">
-              <p className="text-red-400 text-[9px] font-bold uppercase tracking-widest mb-3">{error}</p>
+            <div className="bg-black/90 backdrop-blur-3xl px-6 py-5 rounded-2xl border border-red-500/30 mx-6 text-center shadow-2xl">
+              <p className="text-red-400 text-[10px] font-bold uppercase tracking-widest mb-4">{error}</p>
               <button 
                 onClick={() => window.location.reload()}
-                className="px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[8px] font-black uppercase rounded-lg border border-red-500/20 pointer-events-auto transition-all"
+                className="px-6 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[10px] font-black uppercase rounded-xl border border-red-500/30 pointer-events-auto transition-all"
               >
-                Restart
+                重试
               </button>
             </div>
           )}
         </div>
 
-        {/* Ambient Overlay */}
-        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/20 to-transparent"></div>
+        {/* Subtle Ambient Overlay */}
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/30 via-transparent to-black/10"></div>
       </div>
     </div>
   );
