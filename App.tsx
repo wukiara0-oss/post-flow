@@ -113,127 +113,139 @@ const App: React.FC = () => {
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Match screen/display dimensions
-      const width = video.clientWidth;
-      const height = video.clientHeight;
-      canvas.width = width;
-      canvas.height = height;
+      // CRITICAL: Use window dimensions to match the physical screen aspect ratio exactly
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+      
+      // Use higher resolution for the saved image (2x for retina-like quality)
+      const dpr = 2; 
+      canvas.width = screenW * dpr;
+      canvas.height = screenH * dpr;
 
-      // Calculate crop to mimic 'object-cover'
-      const videoRatio = video.videoWidth / video.videoHeight;
-      const canvasRatio = width / height;
-      let sx, sy, sWidth, sHeight;
-
-      if (videoRatio > canvasRatio) {
-        sHeight = video.videoHeight;
-        sWidth = video.videoHeight * canvasRatio;
-        sx = (video.videoWidth - sWidth) / 2;
+      // 1. Draw Video background (mimic object-cover)
+      const vW = video.videoWidth;
+      const vH = video.videoHeight;
+      const videoRatio = vW / vH;
+      const screenRatio = screenW / screenH;
+      
+      let sx, sy, sW, sH;
+      if (videoRatio > screenRatio) {
+        // Video is wider than screen
+        sH = vH;
+        sW = vH * screenRatio;
+        sx = (vW - sW) / 2;
         sy = 0;
       } else {
-        sWidth = video.videoWidth;
-        sHeight = video.videoWidth / canvasRatio;
+        // Video is taller than screen
+        sW = vW;
+        sH = vW / screenRatio;
         sx = 0;
-        sy = (video.videoHeight - sHeight) / 2;
+        sy = (vH - sH) / 2;
       }
 
-      // Draw mirrored video with cover crop
       ctx.save();
-      ctx.scale(-1, 1);
-      ctx.drawImage(video, sx, sy, sWidth, sHeight, -width, 0, width, height);
+      ctx.scale(-1, 1); // Flip for selfie mode
+      ctx.drawImage(video, sx, sy, sW, sH, -canvas.width, 0, canvas.width, canvas.height);
       ctx.restore();
 
-      // HUD Scaling and Drawing
-      const uiScale = width / 400; 
-      const hudX = 16 * uiScale;
-      const hudY = 16 * uiScale;
-      const hudW = 120 * uiScale;
-      const hudH = 160 * uiScale;
+      // 2. Draw HUD (Top Left Overlay)
+      const uiScale = (canvas.width / 400); 
+      const margin = 16 * uiScale;
+      const panelW = 120 * uiScale;
+      const panelH = 165 * uiScale;
+      const cornerRadius = 20 * uiScale;
 
       // Background Panel
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
       ctx.beginPath();
-      ctx.roundRect(hudX, hudY, hudW, hudH, 15 * uiScale);
+      ctx.roundRect(margin, margin, panelW, panelH, cornerRadius);
       ctx.fill();
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
       ctx.lineWidth = 1 * uiScale;
       ctx.stroke();
 
-      // Drawing Helpers
-      const drawDataItem = (label: string, value: string, color: string, y: number) => {
+      // Text items
+      const drawTextItem = (label: string, value: string, color: string, y: number) => {
+        // Label
         ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-        ctx.font = `bold ${9 * uiScale}px Inter, sans-serif`;
-        ctx.fillText(label.toUpperCase(), hudX + 16 * uiScale, y);
+        ctx.font = `bold ${9 * uiScale}px Inter, -apple-system, sans-serif`;
+        ctx.fillText(label.toUpperCase(), margin + 14 * uiScale, y);
         
+        // Value
         ctx.fillStyle = color;
         ctx.font = `bold ${15 * uiScale}px monospace`;
-        ctx.fillText(value, hudX + 45 * uiScale, y);
+        ctx.fillText(value, margin + 44 * uiScale, y);
       };
 
-      const startY = hudY + 35 * uiScale;
-      const stepY = 26 * uiScale;
+      const startY = margin + 36 * uiScale;
+      const gap = 26 * uiScale;
 
-      drawDataItem('Yaw', `${Math.abs(pose.yaw)}°`, '#34d399', startY);
-      drawDataItem('Pit', `${Math.abs(pose.pitch)}°`, '#38bdf8', startY + stepY);
-      drawDataItem('Rol', `${Math.abs(pose.roll)}°`, '#a78bfa', startY + stepY * 2);
-      
+      drawTextItem('Yaw', `${Math.abs(pose.yaw)}°`, '#34d399', startY);
+      drawTextItem('Pit', `${Math.abs(pose.pitch)}°`, '#38bdf8', startY + gap);
+      drawTextItem('Rol', `${Math.abs(pose.roll)}°`, '#a78bfa', startY + gap * 2);
+
       // Separator
       ctx.beginPath();
-      ctx.moveTo(hudX + 16 * uiScale, startY + stepY * 2.4);
-      ctx.lineTo(hudX + hudW - 16 * uiScale, startY + stepY * 2.4);
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.moveTo(margin + 14 * uiScale, startY + gap * 2.4);
+      ctx.lineTo(margin + panelW - 14 * uiScale, startY + gap * 2.4);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+      ctx.lineWidth = 1 * uiScale;
       ctx.stroke();
 
-      drawDataItem('Dst', `${pose.distance}cm`, '#fbbf24', startY + stepY * 3.1);
-      drawDataItem('Vol', `${pose.volume}dB`, '#f472b6', startY + stepY * 4.1);
+      drawTextItem('Dst', `${pose.distance}cm`, '#fbbf24', startY + gap * 3.1);
+      drawTextItem('Vol', `${pose.volume}dB`, '#f472b6', startY + gap * 4.1);
 
-      // Status Indicator
-      const statusY = hudY + hudH + 15 * uiScale;
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      // 3. Status Indicator
+      const statusY = margin + panelH + 12 * uiScale;
+      const statusW = 75 * uiScale;
+      const statusH = 22 * uiScale;
+      
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.beginPath();
-      ctx.roundRect(hudX, statusY, 70 * uiScale, 20 * uiScale, 10 * uiScale);
+      ctx.roundRect(margin, statusY, statusW, statusH, 11 * uiScale);
       ctx.fill();
       
-      ctx.fillStyle = '#10b981'; // emerald-500
+      // Indicator Dot
+      ctx.fillStyle = '#10b981';
       ctx.beginPath();
-      ctx.arc(hudX + 12 * uiScale, statusY + 10 * uiScale, 3 * uiScale, 0, Math.PI * 2);
+      ctx.arc(margin + 12 * uiScale, statusY + 11 * uiScale, 3 * uiScale, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-      ctx.font = `black ${8 * uiScale}px Inter, sans-serif`;
-      ctx.fillText('ACTIVE', hudX + 22 * uiScale, statusY + 13 * uiScale);
+      // Label
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.font = `900 ${8 * uiScale}px Inter, sans-serif`;
+      ctx.fillText('ACTIVE', margin + 22 * uiScale, statusY + 14 * uiScale);
 
-      // iOS Fix: Use Web Share API
+      // iOS Save Logic
       canvas.toBlob(async (blob) => {
         if (!blob) return;
-
-        const file = new File([blob], `pose-${Date.now()}.png`, { type: 'image/png' });
+        const file = new File([blob], `pose-capture-${Date.now()}.png`, { type: 'image/png' });
 
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
           try {
             await navigator.share({
               files: [file],
-              title: 'Head Pose Capture',
+              title: 'Head Pose Detection',
             });
           } catch (err) {
-            console.log('Share cancelled or failed', err);
+            console.log('Share error or cancelled', err);
           }
         } else {
           const link = document.createElement('a');
-          link.download = `pose-${Date.now()}.png`;
+          link.download = `pose-capture-${Date.now()}.png`;
           link.href = canvas.toDataURL('image/png');
           link.click();
         }
         setIsCapturing(false);
-      }, 'image/png');
+      }, 'image/png', 1.0);
 
     } catch (err) {
-      console.error("Screenshot failed:", err);
+      console.error("Capture process failed:", err);
       setIsCapturing(false);
     }
   };
 
   useEffect(() => {
-    // Corrected: Removed extra closing parenthesis in catch (err) statement
     const init = async () => {
       try {
         await poseService.current.init();
@@ -270,7 +282,7 @@ const App: React.FC = () => {
           style={{ transform: 'scaleX(-1)' }}
         />
 
-        {/* Capture Button - Bottom Center */}
+        {/* Capture Button */}
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30">
           <button 
             onClick={takeScreenshot}
@@ -283,7 +295,7 @@ const App: React.FC = () => {
           </button>
         </div>
 
-        {/* HUD - Top Left */}
+        {/* HUD - Top Left Overlay */}
         {!isLoading && !error && (
           <div className="absolute left-4 top-4 pointer-events-none flex flex-col gap-2.5 z-20">
             <div className="flex flex-col gap-1.5 backdrop-blur-3xl bg-black/40 p-4 rounded-2xl border border-white/5 shadow-2xl min-w-[110px]">
@@ -302,7 +314,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Loading/Error States */}
+        {/* States Overlay */}
         {isLoading && (
           <div className="absolute inset-0 flex items-center justify-center bg-black z-40">
             <div className="flex flex-col items-center gap-4">
@@ -316,12 +328,7 @@ const App: React.FC = () => {
           <div className="absolute inset-0 flex items-center justify-center bg-black/90 backdrop-blur-xl z-50 px-10 text-center">
             <div className="max-w-xs">
               <p className="text-red-400 text-xs font-bold uppercase tracking-widest mb-8 leading-relaxed">{error}</p>
-              <button 
-                onClick={() => window.location.reload()}
-                className="w-full py-4 bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase rounded-2xl border border-white/10 transition-all shadow-xl"
-              >
-                Refresh
-              </button>
+              <button onClick={() => window.location.reload()} className="w-full py-4 bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase rounded-2xl border border-white/10 transition-all shadow-xl">Refresh</button>
             </div>
           </div>
         )}
