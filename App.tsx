@@ -120,24 +120,23 @@ const App: React.FC = () => {
     ctx.drawImage(videoRef.current, -canvas.width, 0, canvas.width, canvas.height);
     ctx.restore();
 
-    // Draw HUD Data Background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    // Draw HUD Data Background (Smaller in screenshot too)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.beginPath();
-    // Adjusted screenshot overlay to be more compact
-    ctx.roundRect(40, canvas.height - 320, 360, 280, 30);
+    ctx.roundRect(30, canvas.height - 300, 320, 260, 20);
     ctx.fill();
     
     // Draw HUD Data Text
     ctx.fillStyle = 'white';
-    ctx.font = 'bold 36px sans-serif';
-    ctx.fillText(`YAW: ${Math.abs(pose.yaw)}°`, 70, canvas.height - 260);
-    ctx.fillText(`PIT: ${Math.abs(pose.pitch)}°`, 70, canvas.height - 215);
-    ctx.fillText(`ROL: ${Math.abs(pose.roll)}°`, 70, canvas.height - 170);
-    ctx.fillText(`VOL: ${pose.volume}dB`, 70, canvas.height - 125);
-    ctx.fillText(`DST: ${pose.distance}cm`, 70, canvas.height - 80);
+    ctx.font = 'bold 32px sans-serif';
+    ctx.fillText(`YAW: ${Math.abs(pose.yaw)}°`, 60, canvas.height - 240);
+    ctx.fillText(`PIT: ${Math.abs(pose.pitch)}°`, 60, canvas.height - 200);
+    ctx.fillText(`ROL: ${Math.abs(pose.roll)}°`, 60, canvas.height - 160);
+    ctx.fillText(`VOL: ${pose.volume}dB`, 60, canvas.height - 120);
+    ctx.fillText(`DST: ${pose.distance}cm`, 60, canvas.height - 80);
 
     const link = document.createElement('a');
-    link.download = `pose-capture-${Date.now()}.png`;
+    link.download = `pose-${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   };
@@ -158,10 +157,10 @@ const App: React.FC = () => {
   }, [setupSensors, startMonitoring]);
 
   const DataItem = ({ label, value, color, unit = "°" }: { label: string, value: number, color: string, unit?: string }) => (
-    <div className="flex items-center gap-2">
-      <span className="text-[9px] font-bold text-white/70 uppercase tracking-tight w-10">{label}</span>
-      <span className={`text-sm font-mono font-bold ${color}`}>
-        {value}<span className="text-[9px] ml-0.5 opacity-40 font-sans">{unit}</span>
+    <div className="flex items-center gap-1.5 leading-none">
+      <span className="text-[8px] font-bold text-white/50 uppercase tracking-tighter w-8">{label}</span>
+      <span className={`text-[13px] font-mono font-bold ${color}`}>
+        {value}<span className="text-[8px] ml-0.5 opacity-30 font-sans font-normal">{unit}</span>
       </span>
     </div>
   );
@@ -180,59 +179,58 @@ const App: React.FC = () => {
         />
 
         {/* Action Controls (Top Right) */}
-        <div className="absolute top-4 right-4 flex flex-col gap-3 pointer-events-none">
+        <div className="absolute top-4 right-4 pointer-events-none">
           <button 
             onClick={takeScreenshot}
-            className="pointer-events-auto w-11 h-11 rounded-xl bg-white/10 backdrop-blur-xl border border-white/20 flex items-center justify-center text-white hover:bg-white/20 active:scale-90 transition-all shadow-lg"
+            className="pointer-events-auto w-10 h-10 rounded-xl bg-black/40 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white hover:bg-white/10 active:scale-90 transition-all shadow-lg"
             title="Take Screenshot"
           >
-            <i className="fa-solid fa-camera text-base"></i>
+            <i className="fa-solid fa-camera text-sm"></i>
           </button>
         </div>
 
-        {/* Compact HUD Overlay - Moved closer to bottom-left */}
+        {/* HUD Overlay - Bottom-Left Positioned & Compact */}
         {!isLoading && !error && (
-          <div className="absolute inset-x-0 bottom-0 pointer-events-none p-4 pb-12 flex flex-col justify-end bg-gradient-to-t from-black/50 via-transparent to-transparent">
-            <div className="flex flex-col gap-0.5 backdrop-blur-md bg-white/5 p-3 rounded-xl border border-white/10 self-start shadow-xl">
+          <div className="absolute left-3 bottom-3 pointer-events-none flex flex-col gap-2">
+            <div className="flex flex-col gap-1.5 backdrop-blur-xl bg-black/40 p-2.5 rounded-xl border border-white/10 shadow-2xl">
               <DataItem label="Yaw" value={Math.abs(pose.yaw)} color="text-emerald-400" />
-              <DataItem label="Pitch" value={Math.abs(pose.pitch)} color="text-sky-400" />
-              <DataItem label="Roll" value={Math.abs(pose.roll)} color="text-violet-400" />
-              <div className="h-px w-full bg-white/10 my-1"></div>
-              <DataItem label="Dist" value={pose.distance} color="text-amber-400" unit="cm" />
+              <DataItem label="Pit" value={Math.abs(pose.pitch)} color="text-sky-400" />
+              <DataItem label="Rol" value={Math.abs(pose.roll)} color="text-violet-400" />
+              <div className="h-px w-full bg-white/10 my-0.5"></div>
+              <DataItem label="Dst" value={pose.distance} color="text-amber-400" unit="cm" />
               <DataItem label="Vol" value={pose.volume || 0} color="text-pink-400" unit="dB" />
             </div>
 
-            <div className="mt-2 flex items-center gap-1.5 self-start px-2 py-0.5 bg-white/5 rounded-full border border-white/5">
+            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-black/40 backdrop-blur-md rounded-full border border-white/5 w-fit">
               <div className={`w-1 h-1 rounded-full animate-pulse ${pose.volume && pose.volume > 45 ? 'bg-pink-500' : 'bg-emerald-500'}`}></div>
-              <span className="text-[7px] font-black text-white/30 uppercase tracking-[0.1em]">
-                Live
-              </span>
+              <span className="text-[7px] font-black text-white/30 uppercase tracking-widest">Live</span>
             </div>
           </div>
         )}
 
-        {/* Status Feedback */}
+        {/* Loader/Error Displays */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           {isLoading && (
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-              <p className="text-white/40 text-[10px] font-bold uppercase tracking-[0.3em]">Initializing</p>
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-4 h-4 border-2 border-white/10 border-t-white/80 rounded-full animate-spin"></div>
+              <span className="text-white/30 text-[8px] font-black uppercase tracking-[0.4em]">Booting</span>
             </div>
           )}
           {error && (
-            <div className="bg-black/60 backdrop-blur-md px-6 py-4 rounded-3xl border border-red-500/30 mx-6 shadow-2xl">
-              <p className="text-red-400 text-[10px] font-bold uppercase tracking-widest text-center">{error}</p>
+            <div className="bg-black/80 backdrop-blur-2xl px-5 py-4 rounded-2xl border border-red-500/20 mx-6 text-center">
+              <p className="text-red-400 text-[9px] font-bold uppercase tracking-widest mb-3">{error}</p>
               <button 
                 onClick={() => window.location.reload()}
-                className="mt-3 w-full py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[9px] font-bold uppercase tracking-tighter rounded-lg border border-red-500/20 pointer-events-auto transition-colors"
+                className="px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-[8px] font-black uppercase rounded-lg border border-red-500/20 pointer-events-auto transition-all"
               >
-                Retry
+                Restart
               </button>
             </div>
           )}
         </div>
 
-        <div className="absolute inset-0 border border-white/5 pointer-events-none"></div>
+        {/* Ambient Overlay */}
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/20 to-transparent"></div>
       </div>
     </div>
   );
