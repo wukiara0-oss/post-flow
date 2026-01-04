@@ -28,12 +28,6 @@ const App: React.FC = () => {
   const setupSensors = useCallback(async () => {
     setIsLoading(true);
     try {
-      /**
-       * 针对 iPhone 优化：
-       * 取消强制的 width/height 和 aspectRatio。
-       * 强制请求这些参数在 iOS 上常导致浏览器为了匹配比例而进行数字裁剪（Zoom-in）。
-       * 仅使用 facingMode 让系统返回最宽广的原生预览流。
-       */
       const constraints: MediaStreamConstraints = {
         video: {
           facingMode: 'user'
@@ -123,17 +117,17 @@ const App: React.FC = () => {
     ctx.drawImage(videoRef.current, -canvas.width, 0, canvas.width, canvas.height);
     ctx.restore();
 
-    // Responsive UI drawing for screenshot based on actual stream size
     const uiScale = canvas.width / 400; 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.beginPath();
-    ctx.roundRect(20 * uiScale, canvas.height - (180 * uiScale), 140 * uiScale, 160 * uiScale, 15 * uiScale);
+    // Screenshot HUD at top-left
+    ctx.roundRect(15 * uiScale, 15 * uiScale, 120 * uiScale, 160 * uiScale, 15 * uiScale);
     ctx.fill();
     
     ctx.fillStyle = 'white';
     ctx.font = `bold ${14 * uiScale}px sans-serif`;
-    const startY = canvas.height - (150 * uiScale);
-    const stepY = 25 * uiScale;
+    const startY = 45 * uiScale;
+    const stepY = 28 * uiScale;
     ctx.fillText(`YAW: ${Math.abs(pose.yaw)}°`, 30 * uiScale, startY);
     ctx.fillText(`PIT: ${Math.abs(pose.pitch)}°`, 30 * uiScale, startY + stepY);
     ctx.fillText(`ROL: ${Math.abs(pose.roll)}°`, 30 * uiScale, startY + stepY * 2);
@@ -141,7 +135,7 @@ const App: React.FC = () => {
     ctx.fillText(`DST: ${pose.distance}cm`, 30 * uiScale, startY + stepY * 4);
 
     const link = document.createElement('a');
-    link.download = `pose-analysis-${Date.now()}.png`;
+    link.download = `pose-capture-${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   };
@@ -162,17 +156,16 @@ const App: React.FC = () => {
   }, [setupSensors, startMonitoring]);
 
   const DataItem = ({ label, value, color, unit = "°" }: { label: string, value: number, color: string, unit?: string }) => (
-    <div className="flex items-center gap-1.5 leading-none">
-      <span className="text-[8px] font-bold text-white/40 uppercase tracking-tighter w-7">{label}</span>
-      <span className={`text-[12px] font-mono font-bold ${color}`}>
-        {value}<span className="text-[8px] ml-0.5 opacity-30 font-sans font-normal">{unit}</span>
+    <div className="flex items-center gap-2 leading-none py-0.5">
+      <span className="text-[9px] font-bold text-white/40 uppercase tracking-tighter w-7">{label}</span>
+      <span className={`text-[15px] font-mono font-bold ${color}`}>
+        {value}<span className="text-[9px] ml-0.5 opacity-40 font-sans font-normal">{unit}</span>
       </span>
     </div>
   );
 
   return (
     <div className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden select-none">
-      {/* Container is now full-screen to adapt to any phone aspect ratio */}
       <div className="relative w-full h-full bg-black flex flex-col overflow-hidden">
         
         <video
@@ -184,20 +177,22 @@ const App: React.FC = () => {
           style={{ transform: 'scaleX(-1)' }}
         />
 
-        {/* Action Controls */}
-        <div className="absolute top-safe-area-inset-top mt-4 right-4 z-20">
+        {/* Capture Button - Bottom Center, Refined Size */}
+        <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30">
           <button 
             onClick={takeScreenshot}
-            className="w-10 h-10 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white active:scale-90 transition-all shadow-xl"
+            className="w-16 h-16 rounded-full bg-white/10 backdrop-blur-3xl border-2 border-white/20 flex items-center justify-center text-white active:scale-90 active:bg-white/20 transition-all shadow-2xl group"
           >
-            <i className="fa-solid fa-camera text-sm"></i>
+            <div className="w-12 h-12 rounded-full border border-white/40 flex items-center justify-center">
+              <div className="w-9 h-9 bg-white rounded-full"></div>
+            </div>
           </button>
         </div>
 
-        {/* Minimalist HUD - Strict Bottom Left */}
+        {/* HUD - Top Left, Refined Fonts and Positioned ~15px from top */}
         {!isLoading && !error && (
-          <div className="absolute left-4 bottom-safe-area-inset-bottom mb-8 pointer-events-none flex flex-col gap-2 z-20">
-            <div className="flex flex-col gap-1.5 backdrop-blur-3xl bg-black/30 p-3 rounded-2xl border border-white/5 shadow-2xl">
+          <div className="absolute left-4 top-4 pointer-events-none flex flex-col gap-2.5 z-20">
+            <div className="flex flex-col gap-1.5 backdrop-blur-3xl bg-black/40 p-4 rounded-2xl border border-white/5 shadow-2xl min-w-[110px]">
               <DataItem label="Yaw" value={Math.abs(pose.yaw)} color="text-emerald-400" />
               <DataItem label="Pit" value={Math.abs(pose.pitch)} color="text-sky-400" />
               <DataItem label="Rol" value={Math.abs(pose.roll)} color="text-violet-400" />
@@ -206,40 +201,39 @@ const App: React.FC = () => {
               <DataItem label="Vol" value={pose.volume || 0} color="text-pink-400" unit="dB" />
             </div>
 
-            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-black/20 backdrop-blur-md rounded-full border border-white/5 w-fit">
-              <div className={`w-1 h-1 rounded-full animate-pulse ${pose.volume && pose.volume > 50 ? 'bg-pink-500' : 'bg-emerald-500'}`}></div>
-              <span className="text-[7px] font-black text-white/30 uppercase tracking-[0.2em]">Live</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-black/30 backdrop-blur-md rounded-full border border-white/5 w-fit ml-0.5">
+              <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${pose.volume && pose.volume > 50 ? 'bg-pink-500' : 'bg-emerald-500'}`}></div>
+              <span className="text-[8px] font-black text-white/30 uppercase tracking-[0.2em]">Active</span>
             </div>
           </div>
         )}
 
-        {/* Loading Overlay */}
+        {/* Loading/Error States */}
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black z-30">
+          <div className="absolute inset-0 flex items-center justify-center bg-black z-40">
             <div className="flex flex-col items-center gap-4">
-              <div className="w-5 h-5 border-2 border-white/10 border-t-white rounded-full animate-spin"></div>
-              <span className="text-white/20 text-[8px] font-black uppercase tracking-[0.5em]">Syncing Sensors</span>
+              <div className="w-6 h-6 border-2 border-white/10 border-t-white rounded-full animate-spin"></div>
+              <span className="text-white/20 text-[9px] font-black uppercase tracking-[0.4em]">Initializing</span>
             </div>
           </div>
         )}
 
-        {/* Error Modal */}
         {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-xl z-40 px-8 text-center">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/90 backdrop-blur-xl z-50 px-10 text-center">
             <div className="max-w-xs">
-              <p className="text-red-400 text-xs font-bold uppercase tracking-widest mb-6 leading-relaxed">{error}</p>
+              <p className="text-red-400 text-xs font-bold uppercase tracking-widest mb-8 leading-relaxed">{error}</p>
               <button 
                 onClick={() => window.location.reload()}
-                className="w-full py-3 bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase rounded-2xl border border-white/10 transition-all"
+                className="w-full py-4 bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase rounded-2xl border border-white/10 transition-all shadow-xl"
               >
-                刷新重试
+                Refresh
               </button>
             </div>
           </div>
         )}
 
-        {/* Vignette for depth */}
-        <div className="absolute inset-0 pointer-events-none bg-radial-gradient from-transparent via-transparent to-black/40"></div>
+        {/* Subtle Edge Vignette */}
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/20 via-transparent to-black/20"></div>
       </div>
     </div>
   );
