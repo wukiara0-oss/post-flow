@@ -29,17 +29,14 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
       /**
-       * 优化移动端摄像头约束：
-       * 1. 显式请求 9:16 宽高比，减少浏览器自动裁剪。
-       * 2. 使用 720x1280 (HD) 作为理想值，这在大多数手机前置摄像头上比 1080p 兼容性更好，
-       *    且不容易触发导致画面“变近”的数字缩放。
+       * 针对 iPhone 优化：
+       * 取消强制的 width/height 和 aspectRatio。
+       * 强制请求这些参数在 iOS 上常导致浏览器为了匹配比例而进行数字裁剪（Zoom-in）。
+       * 仅使用 facingMode 让系统返回最宽广的原生预览流。
        */
       const constraints: MediaStreamConstraints = {
         video: {
-          facingMode: 'user',
-          aspectRatio: { ideal: 9 / 16 },
-          width: { ideal: 720 },
-          height: { ideal: 1280 }
+          facingMode: 'user'
         },
         audio: true
       };
@@ -66,7 +63,7 @@ const App: React.FC = () => {
 
     } catch (err) {
       console.error("Sensor setup failed:", err);
-      setError("无法访问摄像头或麦克风，请检查权限设置");
+      setError("无法开启摄像头。请确保已授予摄像头和麦克风权限。");
       setIsLoading(false);
     }
   }, []);
@@ -111,7 +108,6 @@ const App: React.FC = () => {
     updateFrame();
   }, []);
 
-  // --- SCREENSHOT LOGIC ---
   const takeScreenshot = async () => {
     if (!videoRef.current) return;
     
@@ -122,29 +118,30 @@ const App: React.FC = () => {
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
 
-    // Draw video (mirrored)
     ctx.save();
     ctx.scale(-1, 1);
     ctx.drawImage(videoRef.current, -canvas.width, 0, canvas.width, canvas.height);
     ctx.restore();
 
-    // Draw HUD Data Background
+    // Responsive UI drawing for screenshot based on actual stream size
+    const uiScale = canvas.width / 400; 
     ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     ctx.beginPath();
-    ctx.roundRect(30, canvas.height - 300, 320, 260, 20);
+    ctx.roundRect(20 * uiScale, canvas.height - (180 * uiScale), 140 * uiScale, 160 * uiScale, 15 * uiScale);
     ctx.fill();
     
-    // Draw HUD Data Text
     ctx.fillStyle = 'white';
-    ctx.font = 'bold 32px sans-serif';
-    ctx.fillText(`YAW: ${Math.abs(pose.yaw)}°`, 60, canvas.height - 240);
-    ctx.fillText(`PIT: ${Math.abs(pose.pitch)}°`, 60, canvas.height - 200);
-    ctx.fillText(`ROL: ${Math.abs(pose.roll)}°`, 60, canvas.height - 160);
-    ctx.fillText(`VOL: ${pose.volume}dB`, 60, canvas.height - 120);
-    ctx.fillText(`DST: ${pose.distance}cm`, 60, canvas.height - 80);
+    ctx.font = `bold ${14 * uiScale}px sans-serif`;
+    const startY = canvas.height - (150 * uiScale);
+    const stepY = 25 * uiScale;
+    ctx.fillText(`YAW: ${Math.abs(pose.yaw)}°`, 30 * uiScale, startY);
+    ctx.fillText(`PIT: ${Math.abs(pose.pitch)}°`, 30 * uiScale, startY + stepY);
+    ctx.fillText(`ROL: ${Math.abs(pose.roll)}°`, 30 * uiScale, startY + stepY * 2);
+    ctx.fillText(`VOL: ${pose.volume}dB`, 30 * uiScale, startY + stepY * 3);
+    ctx.fillText(`DST: ${pose.distance}cm`, 30 * uiScale, startY + stepY * 4);
 
     const link = document.createElement('a');
-    link.download = `head-pose-${Date.now()}.png`;
+    link.download = `pose-analysis-${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
   };
@@ -157,7 +154,7 @@ const App: React.FC = () => {
         startMonitoring();
       } catch (err) {
         console.error("Init failed:", err);
-        setError("初始化失败，请刷新页面");
+        setError("系统初始化失败");
       }
     };
     init();
@@ -166,21 +163,18 @@ const App: React.FC = () => {
 
   const DataItem = ({ label, value, color, unit = "°" }: { label: string, value: number, color: string, unit?: string }) => (
     <div className="flex items-center gap-1.5 leading-none">
-      <span className="text-[9px] font-bold text-white/50 uppercase tracking-tighter w-8">{label}</span>
-      <span className={`text-[14px] font-mono font-bold ${color}`}>
-        {value}<span className="text-[9px] ml-0.5 opacity-30 font-sans font-normal">{unit}</span>
+      <span className="text-[8px] font-bold text-white/40 uppercase tracking-tighter w-7">{label}</span>
+      <span className={`text-[12px] font-mono font-bold ${color}`}>
+        {value}<span className="text-[8px] ml-0.5 opacity-30 font-sans font-normal">{unit}</span>
       </span>
     </div>
   );
 
   return (
-    <div className="fixed inset-0 bg-neutral-950 flex items-center justify-center overflow-hidden select-none">
-      <div className="relative h-full aspect-[9/16] max-h-screen w-auto bg-black shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-black flex items-center justify-center overflow-hidden select-none">
+      {/* Container is now full-screen to adapt to any phone aspect ratio */}
+      <div className="relative w-full h-full bg-black flex flex-col overflow-hidden">
         
-        {/* 
-          video 使用 object-cover 填满 9:16 容器。
-          如果获取到的流本身就是 9:16，则不会产生额外的放大感。
-        */}
         <video
           ref={videoRef}
           autoPlay
@@ -190,59 +184,62 @@ const App: React.FC = () => {
           style={{ transform: 'scaleX(-1)' }}
         />
 
-        {/* Action Controls (Top Right) */}
-        <div className="absolute top-4 right-4 pointer-events-none z-10">
+        {/* Action Controls */}
+        <div className="absolute top-safe-area-inset-top mt-4 right-4 z-20">
           <button 
             onClick={takeScreenshot}
-            className="pointer-events-auto w-12 h-12 rounded-2xl bg-black/30 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white active:scale-90 transition-all shadow-xl"
-            title="Take Screenshot"
+            className="w-10 h-10 rounded-full bg-black/20 backdrop-blur-xl border border-white/10 flex items-center justify-center text-white active:scale-90 transition-all shadow-xl"
           >
-            <i className="fa-solid fa-camera text-lg"></i>
+            <i className="fa-solid fa-camera text-sm"></i>
           </button>
         </div>
 
-        {/* HUD Overlay - Bottom-Left Positioned & Ultra Compact */}
+        {/* Minimalist HUD - Strict Bottom Left */}
         {!isLoading && !error && (
-          <div className="absolute left-4 bottom-6 pointer-events-none flex flex-col gap-3 z-10">
-            <div className="flex flex-col gap-2 backdrop-blur-2xl bg-black/40 p-3.5 rounded-2xl border border-white/10 shadow-2xl">
+          <div className="absolute left-4 bottom-safe-area-inset-bottom mb-8 pointer-events-none flex flex-col gap-2 z-20">
+            <div className="flex flex-col gap-1.5 backdrop-blur-3xl bg-black/30 p-3 rounded-2xl border border-white/5 shadow-2xl">
               <DataItem label="Yaw" value={Math.abs(pose.yaw)} color="text-emerald-400" />
               <DataItem label="Pit" value={Math.abs(pose.pitch)} color="text-sky-400" />
               <DataItem label="Rol" value={Math.abs(pose.roll)} color="text-violet-400" />
-              <div className="h-px w-full bg-white/10 my-0.5"></div>
+              <div className="h-px w-full bg-white/5 my-0.5"></div>
               <DataItem label="Dst" value={pose.distance} color="text-amber-400" unit="cm" />
               <DataItem label="Vol" value={pose.volume || 0} color="text-pink-400" unit="dB" />
             </div>
 
-            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-black/40 backdrop-blur-md rounded-full border border-white/5 w-fit">
-              <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${pose.volume && pose.volume > 45 ? 'bg-pink-500' : 'bg-emerald-500'}`}></div>
-              <span className="text-[8px] font-black text-white/40 uppercase tracking-widest">Live Tracking</span>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-black/20 backdrop-blur-md rounded-full border border-white/5 w-fit">
+              <div className={`w-1 h-1 rounded-full animate-pulse ${pose.volume && pose.volume > 50 ? 'bg-pink-500' : 'bg-emerald-500'}`}></div>
+              <span className="text-[7px] font-black text-white/30 uppercase tracking-[0.2em]">Live</span>
             </div>
           </div>
         )}
 
-        {/* Loader/Error Displays */}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
-          {isLoading && (
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-6 h-6 border-2 border-white/10 border-t-white rounded-full animate-spin"></div>
-              <span className="text-white/40 text-[9px] font-black uppercase tracking-[0.4em]">Optimizing Feed</span>
+        {/* Loading Overlay */}
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black z-30">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-5 h-5 border-2 border-white/10 border-t-white rounded-full animate-spin"></div>
+              <span className="text-white/20 text-[8px] font-black uppercase tracking-[0.5em]">Syncing Sensors</span>
             </div>
-          )}
-          {error && (
-            <div className="bg-black/90 backdrop-blur-3xl px-6 py-5 rounded-2xl border border-red-500/30 mx-6 text-center shadow-2xl">
-              <p className="text-red-400 text-[10px] font-bold uppercase tracking-widest mb-4">{error}</p>
+          </div>
+        )}
+
+        {/* Error Modal */}
+        {error && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 backdrop-blur-xl z-40 px-8 text-center">
+            <div className="max-w-xs">
+              <p className="text-red-400 text-xs font-bold uppercase tracking-widest mb-6 leading-relaxed">{error}</p>
               <button 
                 onClick={() => window.location.reload()}
-                className="px-6 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[10px] font-black uppercase rounded-xl border border-red-500/30 pointer-events-auto transition-all"
+                className="w-full py-3 bg-white/5 hover:bg-white/10 text-white text-[10px] font-black uppercase rounded-2xl border border-white/10 transition-all"
               >
-                重试
+                刷新重试
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* Subtle Ambient Overlay */}
-        <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/30 via-transparent to-black/10"></div>
+        {/* Vignette for depth */}
+        <div className="absolute inset-0 pointer-events-none bg-radial-gradient from-transparent via-transparent to-black/40"></div>
       </div>
     </div>
   );
