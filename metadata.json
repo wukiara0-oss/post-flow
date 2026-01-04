@@ -1,0 +1,8 @@
+{
+  "name": "Precision Head Pose Tracker",
+  "description": "Real-time minimalist head pose detection quantifying Yaw, Pitch, and Roll with high precision, plus real-time audio volume monitoring.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
