@@ -108,37 +108,101 @@ const App: React.FC = () => {
     
     setIsCapturing(true);
     try {
+      const video = videoRef.current;
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
+      // Match screen/display dimensions
+      const width = video.clientWidth;
+      const height = video.clientHeight;
+      canvas.width = width;
+      canvas.height = height;
 
-      // Draw mirrored video
+      // Calculate crop to mimic 'object-cover'
+      const videoRatio = video.videoWidth / video.videoHeight;
+      const canvasRatio = width / height;
+      let sx, sy, sWidth, sHeight;
+
+      if (videoRatio > canvasRatio) {
+        sHeight = video.videoHeight;
+        sWidth = video.videoHeight * canvasRatio;
+        sx = (video.videoWidth - sWidth) / 2;
+        sy = 0;
+      } else {
+        sWidth = video.videoWidth;
+        sHeight = video.videoWidth / canvasRatio;
+        sx = 0;
+        sy = (video.videoHeight - sHeight) / 2;
+      }
+
+      // Draw mirrored video with cover crop
       ctx.save();
       ctx.scale(-1, 1);
-      ctx.drawImage(videoRef.current, -canvas.width, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, sx, sy, sWidth, sHeight, -width, 0, width, height);
       ctx.restore();
 
-      // Draw HUD onto screenshot
-      const uiScale = canvas.width / 400; 
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      // HUD Scaling and Drawing
+      const uiScale = width / 400; 
+      const hudX = 16 * uiScale;
+      const hudY = 16 * uiScale;
+      const hudW = 120 * uiScale;
+      const hudH = 160 * uiScale;
+
+      // Background Panel
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.beginPath();
-      ctx.roundRect(15 * uiScale, 15 * uiScale, 120 * uiScale, 160 * uiScale, 15 * uiScale);
+      ctx.roundRect(hudX, hudY, hudW, hudH, 15 * uiScale);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.lineWidth = 1 * uiScale;
+      ctx.stroke();
+
+      // Drawing Helpers
+      const drawDataItem = (label: string, value: string, color: string, y: number) => {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.font = `bold ${9 * uiScale}px Inter, sans-serif`;
+        ctx.fillText(label.toUpperCase(), hudX + 16 * uiScale, y);
+        
+        ctx.fillStyle = color;
+        ctx.font = `bold ${15 * uiScale}px monospace`;
+        ctx.fillText(value, hudX + 45 * uiScale, y);
+      };
+
+      const startY = hudY + 35 * uiScale;
+      const stepY = 26 * uiScale;
+
+      drawDataItem('Yaw', `${Math.abs(pose.yaw)}°`, '#34d399', startY);
+      drawDataItem('Pit', `${Math.abs(pose.pitch)}°`, '#38bdf8', startY + stepY);
+      drawDataItem('Rol', `${Math.abs(pose.roll)}°`, '#a78bfa', startY + stepY * 2);
+      
+      // Separator
+      ctx.beginPath();
+      ctx.moveTo(hudX + 16 * uiScale, startY + stepY * 2.4);
+      ctx.lineTo(hudX + hudW - 16 * uiScale, startY + stepY * 2.4);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      ctx.stroke();
+
+      drawDataItem('Dst', `${pose.distance}cm`, '#fbbf24', startY + stepY * 3.1);
+      drawDataItem('Vol', `${pose.volume}dB`, '#f472b6', startY + stepY * 4.1);
+
+      // Status Indicator
+      const statusY = hudY + hudH + 15 * uiScale;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.beginPath();
+      ctx.roundRect(hudX, statusY, 70 * uiScale, 20 * uiScale, 10 * uiScale);
       ctx.fill();
       
-      ctx.fillStyle = 'white';
-      ctx.font = `bold ${14 * uiScale}px sans-serif`;
-      const startY = 45 * uiScale;
-      const stepY = 28 * uiScale;
-      ctx.fillText(`YAW: ${Math.abs(pose.yaw)}°`, 30 * uiScale, startY);
-      ctx.fillText(`PIT: ${Math.abs(pose.pitch)}°`, 30 * uiScale, startY + stepY);
-      ctx.fillText(`ROL: ${Math.abs(pose.roll)}°`, 30 * uiScale, startY + stepY * 2);
-      ctx.fillText(`VOL: ${pose.volume}dB`, 30 * uiScale, startY + stepY * 3);
-      ctx.fillText(`DST: ${pose.distance}cm`, 30 * uiScale, startY + stepY * 4);
+      ctx.fillStyle = '#10b981'; // emerald-500
+      ctx.beginPath();
+      ctx.arc(hudX + 12 * uiScale, statusY + 10 * uiScale, 3 * uiScale, 0, Math.PI * 2);
+      ctx.fill();
 
-      // iOS Fix: Use Web Share API if available to prevent navigation/freeze
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.font = `black ${8 * uiScale}px Inter, sans-serif`;
+      ctx.fillText('ACTIVE', hudX + 22 * uiScale, statusY + 13 * uiScale);
+
+      // iOS Fix: Use Web Share API
       canvas.toBlob(async (blob) => {
         if (!blob) return;
 
@@ -154,7 +218,6 @@ const App: React.FC = () => {
             console.log('Share cancelled or failed', err);
           }
         } else {
-          // Fallback for browsers that don't support file sharing
           const link = document.createElement('a');
           link.download = `pose-${Date.now()}.png`;
           link.href = canvas.toDataURL('image/png');
@@ -170,6 +233,7 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    // Corrected: Removed extra closing parenthesis in catch (err) statement
     const init = async () => {
       try {
         await poseService.current.init();
