@@ -14,6 +14,7 @@ const App: React.FC = () => {
   const [pose, setPose] = useState<HeadPose>({ pitch: 0, yaw: 0, roll: 0, distance: 0, volume: 0 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
   const poseService = useRef(new PoseDetectionService());
 
   const stopCapture = () => {
@@ -103,41 +104,69 @@ const App: React.FC = () => {
   }, []);
 
   const takeScreenshot = async () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || isCapturing) return;
     
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    setIsCapturing(true);
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-    canvas.width = videoRef.current.videoWidth;
-    canvas.height = videoRef.current.videoHeight;
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
 
-    ctx.save();
-    ctx.scale(-1, 1);
-    ctx.drawImage(videoRef.current, -canvas.width, 0, canvas.width, canvas.height);
-    ctx.restore();
+      // Draw mirrored video
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(videoRef.current, -canvas.width, 0, canvas.width, canvas.height);
+      ctx.restore();
 
-    const uiScale = canvas.width / 400; 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.beginPath();
-    // Screenshot HUD at top-left
-    ctx.roundRect(15 * uiScale, 15 * uiScale, 120 * uiScale, 160 * uiScale, 15 * uiScale);
-    ctx.fill();
-    
-    ctx.fillStyle = 'white';
-    ctx.font = `bold ${14 * uiScale}px sans-serif`;
-    const startY = 45 * uiScale;
-    const stepY = 28 * uiScale;
-    ctx.fillText(`YAW: ${Math.abs(pose.yaw)}°`, 30 * uiScale, startY);
-    ctx.fillText(`PIT: ${Math.abs(pose.pitch)}°`, 30 * uiScale, startY + stepY);
-    ctx.fillText(`ROL: ${Math.abs(pose.roll)}°`, 30 * uiScale, startY + stepY * 2);
-    ctx.fillText(`VOL: ${pose.volume}dB`, 30 * uiScale, startY + stepY * 3);
-    ctx.fillText(`DST: ${pose.distance}cm`, 30 * uiScale, startY + stepY * 4);
+      // Draw HUD onto screenshot
+      const uiScale = canvas.width / 400; 
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.beginPath();
+      ctx.roundRect(15 * uiScale, 15 * uiScale, 120 * uiScale, 160 * uiScale, 15 * uiScale);
+      ctx.fill();
+      
+      ctx.fillStyle = 'white';
+      ctx.font = `bold ${14 * uiScale}px sans-serif`;
+      const startY = 45 * uiScale;
+      const stepY = 28 * uiScale;
+      ctx.fillText(`YAW: ${Math.abs(pose.yaw)}°`, 30 * uiScale, startY);
+      ctx.fillText(`PIT: ${Math.abs(pose.pitch)}°`, 30 * uiScale, startY + stepY);
+      ctx.fillText(`ROL: ${Math.abs(pose.roll)}°`, 30 * uiScale, startY + stepY * 2);
+      ctx.fillText(`VOL: ${pose.volume}dB`, 30 * uiScale, startY + stepY * 3);
+      ctx.fillText(`DST: ${pose.distance}cm`, 30 * uiScale, startY + stepY * 4);
 
-    const link = document.createElement('a');
-    link.download = `pose-capture-${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+      // iOS Fix: Use Web Share API if available to prevent navigation/freeze
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+
+        const file = new File([blob], `pose-${Date.now()}.png`, { type: 'image/png' });
+
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({
+              files: [file],
+              title: 'Head Pose Capture',
+            });
+          } catch (err) {
+            console.log('Share cancelled or failed', err);
+          }
+        } else {
+          // Fallback for browsers that don't support file sharing
+          const link = document.createElement('a');
+          link.download = `pose-${Date.now()}.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+        }
+        setIsCapturing(false);
+      }, 'image/png');
+
+    } catch (err) {
+      console.error("Screenshot failed:", err);
+      setIsCapturing(false);
+    }
   };
 
   useEffect(() => {
@@ -177,19 +206,20 @@ const App: React.FC = () => {
           style={{ transform: 'scaleX(-1)' }}
         />
 
-        {/* Capture Button - Bottom Center, Refined Size */}
+        {/* Capture Button - Bottom Center */}
         <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30">
           <button 
             onClick={takeScreenshot}
-            className="w-16 h-16 rounded-full bg-white/10 backdrop-blur-3xl border-2 border-white/20 flex items-center justify-center text-white active:scale-90 active:bg-white/20 transition-all shadow-2xl group"
+            disabled={isCapturing}
+            className={`w-16 h-16 rounded-full bg-white/10 backdrop-blur-3xl border-2 border-white/20 flex items-center justify-center text-white active:scale-90 active:bg-white/20 transition-all shadow-2xl group ${isCapturing ? 'opacity-50' : ''}`}
           >
             <div className="w-12 h-12 rounded-full border border-white/40 flex items-center justify-center">
-              <div className="w-9 h-9 bg-white rounded-full"></div>
+              <div className={`w-9 h-9 bg-white rounded-full ${isCapturing ? 'animate-pulse' : ''}`}></div>
             </div>
           </button>
         </div>
 
-        {/* HUD - Top Left, Refined Fonts and Positioned ~15px from top */}
+        {/* HUD - Top Left */}
         {!isLoading && !error && (
           <div className="absolute left-4 top-4 pointer-events-none flex flex-col gap-2.5 z-20">
             <div className="flex flex-col gap-1.5 backdrop-blur-3xl bg-black/40 p-4 rounded-2xl border border-white/5 shadow-2xl min-w-[110px]">
@@ -232,7 +262,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Subtle Edge Vignette */}
         <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/20 via-transparent to-black/20"></div>
       </div>
     </div>
